@@ -6,6 +6,7 @@ export type Profile = {
   email: string | null;
   avatar_url: string | null;
   plan_tier: PlanTier;
+  writing_preferences: unknown | null;
   updated_at: string;
 };
 
@@ -35,6 +36,7 @@ export type Database = {
           email?: string | null;
           avatar_url?: string | null;
           plan_tier?: PlanTier;
+          writing_preferences?: unknown | null;
           updated_at?: string;
         };
         Update: {
@@ -42,6 +44,7 @@ export type Database = {
           email?: string | null;
           avatar_url?: string | null;
           plan_tier?: PlanTier;
+          writing_preferences?: unknown | null;
           updated_at?: string;
         };
         Relationships: [];

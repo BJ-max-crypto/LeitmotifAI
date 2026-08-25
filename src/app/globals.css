@@ -2,13 +2,33 @@
 
 :root {
   --background: #fafafa;
-  --foreground: #111827;
+  --foreground: #18181b;
+  --surface: #ffffff;
+  --muted: #f4f4f5;
+  --border: #e4e4e7;
+  --accent-from: #000000;
+  --accent-to: #737373;
+  --shadow-soft: 0 8px 30px rgb(0, 0, 0, 0.04);
 }
+
+.dark {
+  --background: #101114;
+  --foreground: #ececec;
+  --surface: #17181c;
+  --muted: #22242a;
+  --border: #2e3138;
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
   --font-sans: var(--font-inter);
+  --font-serif: "Times New Roman", Times, serif;
 }
 
 html,
@@ -27,11 +47,232 @@ input:focus {
   outline: none;
 }
 
+.genre-scroll {
+  scrollbar-width: none;
+}
+
+.genre-scroll::-webkit-scrollbar {
+  display: none;
+}
+
 .editor-scrollbar::-webkit-scrollbar {
   width: 8px;
 }
 
 .editor-scrollbar::-webkit-scrollbar-thumb {
-  background: #e5e7eb;
+  background: var(--border);
   border-radius: 999px;
+}
+
+.prose-generation {
+  font-family: "Times New Roman", Times, serif;
+  font-size: 17px;
+  line-height: 1.7;
+  color: var(--foreground);
+}
+
+.prose-generation p {
+  margin: 0 0 0.9em;
+}
+
+.prose-generation p:last-child {
+  margin-bottom: 0;
+}
+
+.prose-generation strong {
+  font-weight: 700;
+}
+
+.editor-surface h1,
+.editor-ghost-copy h1 {
+  font-size: 1.55em;
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 0.7em 0 0.28em;
+}
+
+.editor-surface h2,
+.editor-ghost-copy h2 {
+  font-size: 1.28em;
+  font-weight: 650;
+  line-height: 1.3;
+  margin: 0.6em 0 0.22em;
+}
+
+.editor-surface h3,
+.editor-ghost-copy h3 {
+  font-size: 1.08em;
+  font-weight: 650;
+  margin: 0.5em 0 0.18em;
+}
+
+.editor-surface ul,
+.editor-surface ol,
+.editor-ghost-copy ul,
+.editor-ghost-copy ol {
+  margin: 0.35em 0 0.35em 1.35em;
+  padding: 0;
+}
+
+.editor-surface li,
+.editor-ghost-copy li {
+  margin: 0.12em 0;
+}
+
+.editor-surface blockquote,
+.editor-ghost-copy blockquote {
+  margin: 0.5em 0;
+  padding-left: 0.9em;
+  border-left: 2px solid #cbd5e1;
+}
+
+.editor-surface u,
+.editor-ghost-copy u {
+  text-decoration: underline;
+}
+
+.editor-surface s,
+.editor-surface strike,
+.editor-ghost-copy s,
+.editor-ghost-copy strike {
+  text-decoration: line-through;
+}
+
+.editor-ghost-copy,
+.editor-ghost-copy * {
+  color: transparent !important;
+}
+
+.editor-surface mark.ai-edit {
+  background: rgba(250, 204, 21, 0.38);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 0.12em;
+}
+
+.editor-empty:before {
+  content: attr(data-placeholder);
+  color: #94a3b8;
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
+
+.gen-fade {
+  animation: gen-fade 0.55s ease both;
+}
+
+.gen-settled {
+  animation: none;
+}
+
+@keyframes gen-fade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes send-burst {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(0.82) rotate(-10deg);
+  }
+  65% {
+    transform: scale(1.14);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.send-burst {
+  animation: send-burst 0.34s ease;
+}
+
+.ink-fill {
+  background-image: linear-gradient(90deg, var(--accent-from), var(--accent-to));
+}
+
+.ink-text {
+  color: #000000;
+  background-image: none;
+  -webkit-text-fill-color: #000000;
+}
+
+.dark .ink-text {
+  color: #fafafa;
+  -webkit-text-fill-color: #fafafa;
+}
+
+.sleek-cta {
+  border: 1.5px solid #a1a1aa;
+  background: rgb(255 255 255 / 0.62);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+}
+
+.dark .sleek-cta {
+  border-color: #a1a1aa;
+  background: rgb(255 255 255 / 0.08);
+}
+
+.sleek-cta svg {
+  color: #000000;
+}
+
+.glass-panel {
+  background: color-mix(in srgb, white 78%, transparent);
+  backdrop-filter: blur(18px);
+  box-shadow: var(--shadow-soft);
+}
+
+.dark .glass-panel {
+  background: color-mix(in srgb, #17181c 82%, transparent);
+}
+
+.sidebar-pattern {
+  background-color: var(--surface);
+  background-image:
+    radial-gradient(circle at 1px 1px, rgb(24 24 27 / 0.05) 1px, transparent 0);
+  background-size: 18px 18px;
+}
+
+.interactive-scale {
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.interactive-scale:hover {
+  transform: scale(1.02);
+}
+
+.editor-surface {
+  caret-color: #18181b;
+}
+
+@keyframes saved-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.85);
+  }
+}
+
+.saved-dot-saving {
+  animation: saved-pulse 0.9s ease-in-out infinite;
+}
+
+.prompt-glow:focus-within {
+  box-shadow:
+    0 0 0 1.5px #a1a1aa,
+    0 14px 36px rgb(0 0 0 / 0.1);
 }

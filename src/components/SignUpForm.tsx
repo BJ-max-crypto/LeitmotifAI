@@ -2,7 +2,7 @@
 
 import { ClerkMissingKeys } from "@/components/ClerkMissingKeys";
 import { isClerkConfigured } from "@/lib/clerk-env";
-import { SignIn } from "@clerk/nextjs";
+import { SignUp } from "@clerk/nextjs";
 
 const appearance = {
   elements: {
@@ -18,7 +18,7 @@ const appearance = {
   },
 } as const;
 
-export function LoginForm() {
+export function SignUpForm() {
   if (!isClerkConfigured()) {
     return <ClerkMissingKeys />;
   }
@@ -29,10 +29,10 @@ export function LoginForm() {
         <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-slate-400">
           Leitmotif
         </p>
-        <SignIn
+        <SignUp
           appearance={appearance}
           fallbackRedirectUrl="/editor"
-          signUpUrl="/sign-up"
+          signInUrl="/login"
         />
       </div>
     </div>

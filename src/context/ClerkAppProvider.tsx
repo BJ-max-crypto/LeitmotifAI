@@ -1,16 +1,13 @@
 "use client";
 
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, usePathname } from "next/navigation";
+import { useClerk, useSession, useUser } from "@clerk/nextjs";
 import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { useRouter } from "next/navigation";
-import { PLAN_LIMITS } from "@/lib/plans";
+  createBrowserSupabase,
+  type BrowserSupabase,
+} from "@/lib/supabase/client";
+import { ensureWorkspace } from "@/lib/supabase/ensure-workspace";
 import {
   parseDocumentContent,
   serializeDocumentContent,
@@ -19,8 +16,15 @@ import {
 } from "@/lib/document-blocks";
 import type { AiAttachment } from "@/lib/files";
 import { htmlToPlain, applyWriteStream, applyEditStream, unwrapAiEdit } from "@/lib/editor-html";
-import { EMPTY_STORY_BIBLE, formatStoryBible, type StoryBible } from "@/lib/story-bible";
+import {
+  EMPTY_STORY_BIBLE,
+  formatStoryBible,
+  isEmptyStoryBible,
+  takeLegacyGlobalStoryBible,
+  type StoryBible,
+} from "@/lib/story-bible";
 import { parseAiPrompt } from "@/lib/prompt-mode";
+import { hasCompletedOnboarding } from "@/lib/writing-preferences";
 import { useWritingPrefs } from "@/context/WritingPrefs";
 import {
   addRestorePoint,
@@ -34,174 +38,30 @@ import type {
   Profile,
   UserCredits,
 } from "@/lib/supabase/database.types";
+import {
+  AppContext,
+  EMPTY_CREDITS,
+  toCredits,
+  useBodyHistory,
+  type AppState,
+  type Credits,
+} from "@/context/AppProvider";
 
-export type Credits = {
-  used: number;
-  limit: number;
-  remaining: number;
-  plan: PlanTier;
-};
-
-export type AppState = {
-  ready: boolean;
-  profile: Profile | null;
-  documents: DocumentRow[];
-  activeDocument: DocumentRow | null;
-  query: string;
-  setQuery: (value: string) => void;
-  title: string;
-  setTitle: (value: string) => void;
-  body: string;
-  setBody: (value: string) => void;
-  aiDrafts: AiDraft[];
-  aiExpanded: boolean;
-  hasAiDrafts: boolean;
-  toggleAiExpanded: () => void;
-  setAiDraftContent: (id: string, content: string) => void;
-  acceptAiDraft: (id: string) => void;
-  rejectAiDraft: (id: string) => void;
-  stopGenerate: () => void;
-  jumpToBeat: (documentId: string, beat: { offset: number; label: string }) => void;
-  scrollTarget: { offset: number; label: string } | null;
-  clearScrollTarget: () => void;
-  quotedPassage: QuotedPassage | null;
-  setQuotedPassage: (passage: QuotedPassage | null) => void;
-  storyBible: StoryBible;
-  setStoryBible: (value: StoryBible) => void;
-  aiReply: string;
-  aiReplyVisible: boolean;
-  aiReplyMinimized: boolean;
-  setAiReplyMinimized: (value: boolean) => void;
-  dismissAiReply: () => void;
-  pendingEdit: { id: string; originalBody: string } | null;
-  acceptPendingEdit: () => void;
-  rejectPendingEdit: () => void;
-  undo: () => void;
-  redo: () => void;
-  canUndo: boolean;
-  canRedo: boolean;
-  prompt: string;
-  setPrompt: (value: string) => void;
-  credits: Credits;
-  streaming: boolean;
-  saveState: "saved" | "saving";
-  actionError: string | null;
-  clearActionError: () => void;
-  showPaywall: boolean;
-  showPricing: boolean;
-  openPricing: () => void;
-  closePricing: () => void;
-  generate: (options?: { attachments?: AiAttachment[]; prompt?: string }) => Promise<void>;
-  upgrade: (plan: "pro" | "pro_plus") => Promise<void>;
-  selectDocument: (id: string) => void;
-  createDocument: () => Promise<void>;
-  deleteDocument: (id: string) => Promise<void>;
-  renameDocument: (id: string, title: string) => Promise<void>;
-  updateProfile: (input: { full_name: string }) => Promise<void>;
-  signOut: () => Promise<void>;
-  versions: RestorePoint[];
-  captureRestorePoint: (label?: string) => void;
-  restoreVersion: (id: string) => void;
-  saveNow: () => void;
-  commandOpen: boolean;
-  setCommandOpen: (value: boolean) => void;
-  historyOpen: boolean;
-  setHistoryOpen: (value: boolean) => void;
-  exportOpen: boolean;
-  setExportOpen: (value: boolean) => void;
-};
-
-export const AppContext = createContext<AppState | null>(null);
-
-export const EMPTY_CREDITS: Credits = {
-  used: 0,
-  limit: 50,
-  remaining: 50,
-  plan: "free",
-};
-
-export function toCredits(credits: UserCredits | null, plan: PlanTier): Credits {
-  const used = credits?.credits_used ?? 0;
-  const limit = credits?.credits_limit ?? 50;
-  return {
-    used,
-    limit,
-    remaining: Math.max(limit - used, 0),
-    plan,
-  };
-}
-
-export function useBodyHistory() {
-  const undoStack = useRef<string[]>([]);
-  const redoStack = useRef<string[]>([]);
-  const skip = useRef(false);
-  const [, setTick] = useState(0);
-
-  const remember = useCallback((snapshot: string) => {
-    if (skip.current) {
-      skip.current = false;
-      return;
-    }
-    const stack = undoStack.current;
-    if (stack[stack.length - 1] === snapshot) return;
-    stack.push(snapshot);
-    if (stack.length > 80) stack.shift();
-    redoStack.current = [];
-    setTick((value) => value + 1);
-  }, []);
-
-  const undo = useCallback((current: string, apply: (next: string) => void) => {
-    if (undoStack.current.length < 2) return;
-    redoStack.current.push(current);
-    undoStack.current.pop();
-    const prev = undoStack.current[undoStack.current.length - 1];
-    skip.current = true;
-    apply(prev);
-    setTick((value) => value + 1);
-  }, []);
-
-  const redo = useCallback((current: string, apply: (next: string) => void) => {
-    const next = redoStack.current.pop();
-    if (next == null) return;
-    undoStack.current.push(next);
-    skip.current = true;
-    apply(next);
-    setTick((value) => value + 1);
-  }, []);
-
-  return {
-    remember,
-    undo,
-    redo,
-    canUndo: undoStack.current.length > 1,
-    canRedo: redoStack.current.length > 0,
-  };
-}
-
-const PROTOTYPE_USER_ID = "prototype-user";
-
-function prototypeDocument(partial?: Partial<DocumentRow>): DocumentRow {
-  const now = new Date().toISOString();
-  return {
-    id: crypto.randomUUID(),
-    user_id: PROTOTYPE_USER_ID,
-    title: "Untitled",
-    content: "",
-    created_at: now,
-    updated_at: now,
-    ...partial,
-  };
-}
-
-function PrototypeAppProvider({ children }: { children: React.ReactNode }) {
+export function ClerkAppProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const { isLoaded, isSignedIn, session } = useSession();
+  const { user } = useUser();
+  const { signOut: clerkSignOut } = useClerk();
   const { autoSave, writingStyles, creativity } = useWritingPrefs();
+  const supabaseRef = useRef<BrowserSupabase | null>(null);
   const skipSave = useRef(true);
   const streamingRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const history = useBodyHistory();
 
   const [ready, setReady] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [documents, setDocuments] = useState<DocumentRow[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -234,26 +94,125 @@ function PrototypeAppProvider({ children }: { children: React.ReactNode }) {
 
   const activeDocument = documents.find((doc) => doc.id === activeId) ?? null;
 
-  useEffect(() => {
-    const first = prototypeDocument({ title: "Untitled" });
-    skipSave.current = true;
-    setProfile({
-      id: PROTOTYPE_USER_ID,
-      full_name: "Alex Writer",
-      email: "alex@leitmotif.local",
-      avatar_url: null,
-      plan_tier: "free",
-      writing_preferences: null,
-      updated_at: new Date().toISOString(),
-    });
-    setDocuments([first]);
-    setActiveId(first.id);
-    setTitle(first.title);
-    setBody(first.content);
-    setStoryBible({ ...EMPTY_STORY_BIBLE });
-    setAllVersions(loadRestorePoints());
-    setReady(true);
+  const applyCredits = useCallback((row: UserCredits | null, plan: PlanTier) => {
+    setCredits(toCredits(row, plan));
   }, []);
+
+  const loadWorkspace = useCallback(async () => {
+    if (!isLoaded) return;
+    if (!isSignedIn || !user || !session) {
+      router.replace("/login");
+      return;
+    }
+
+    try {
+      const supabase = createBrowserSupabase(async () => (await session.getToken()) ?? null);
+      supabaseRef.current = supabase;
+      setUserId(user.id);
+      const { error: rpcError } = await supabase.rpc("ensure_user_workspace");
+      if (rpcError && !/does not exist|schema cache/i.test(rpcError.message)) {
+        setActionError(rpcError.message);
+      }
+      const workspace = await ensureWorkspace(supabase, {
+        id: user.id,
+        email: user.primaryEmailAddress?.emailAddress ?? null,
+        full_name: user.fullName,
+        avatar_url: user.imageUrl,
+      });
+      if (workspace.error) {
+        setActionError(
+          workspace.error.includes("Could not find") || workspace.error.includes("schema cache")
+            ? "Database tables are missing. Paste supabase/migrations into the Supabase SQL editor, then refresh."
+            : workspace.error,
+        );
+      }
+
+      skipSave.current = true;
+      setProfile(workspace.profile);
+      applyCredits(workspace.credits, workspace.profile?.plan_tier ?? "free");
+      setDocuments(workspace.documents);
+      const first = workspace.documents[0];
+      setActiveId(first?.id ?? null);
+      setTitle(first?.title || "Untitled");
+      const parsed = parseDocumentContent(first?.content || "");
+      const legacyBible = takeLegacyGlobalStoryBible();
+      const bible =
+        isEmptyStoryBible(parsed.storyBible) && legacyBible ? legacyBible : parsed.storyBible;
+      setBody(parsed.body);
+      setAiDrafts(parsed.aiDrafts);
+      setStoryBible(bible);
+      setQuotedPassage(null);
+      setAiExpanded(parsed.aiDrafts.length > 0);
+      setAllVersions(loadRestorePoints());
+      if (first && legacyBible && isEmptyStoryBible(parsed.storyBible)) {
+        await supabase
+          .from("documents")
+          .update({ content: serializeDocumentContent(parsed.body, bible) })
+          .eq("id", first.id);
+      }
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Could not load workspace");
+    } finally {
+      setReady(true);
+    }
+  }, [applyCredits, isLoaded, isSignedIn, router, session, user]);
+
+  useEffect(() => {
+    void loadWorkspace();
+  }, [loadWorkspace]);
+
+  useEffect(() => {
+    if (!ready || !profile) return;
+    if (pathname?.startsWith("/onboarding")) return;
+    if (!hasCompletedOnboarding(profile.writing_preferences)) {
+      router.replace("/onboarding");
+    }
+  }, [pathname, profile, ready, router]);
+
+  useEffect(() => {
+    if (!userId) return;
+    const supabase = supabaseRef.current;
+    if (!supabase) return;
+
+    const creditsChannel = supabase
+      .channel(`credits:${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "user_credits",
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          setCredits((current) => toCredits(payload.new as UserCredits, current.plan));
+        },
+      )
+      .subscribe();
+
+    const profileChannel = supabase
+      .channel(`profile:${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "profiles",
+          filter: `id=eq.${userId}`,
+        },
+        (payload) => {
+          const next = payload.new as Profile;
+          setProfile(next);
+          setCredits((current) => ({ ...current, plan: next.plan_tier }));
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(creditsChannel);
+      void supabase.removeChannel(profileChannel);
+    };
+  }, [userId]);
 
   useEffect(() => {
     if (!ready || !activeId || streaming || !autoSave) return;
@@ -264,20 +223,30 @@ function PrototypeAppProvider({ children }: { children: React.ReactNode }) {
 
     setSaveState("saving");
     const timer = window.setTimeout(() => {
-      const now = new Date().toISOString();
-      setDocuments((current) =>
-        current.map((doc) =>
-          doc.id === activeId
-            ? {
-                ...doc,
-                title: title || "Untitled",
-                content: serializeDocumentContent(body, storyBible),
-                updated_at: now,
-              }
-            : doc,
-        ),
-      );
-      setSaveState("saved");
+      void (async () => {
+        const supabase = supabaseRef.current;
+        if (!supabase) return;
+        const { data, error } = await supabase
+          .from("documents")
+          .update({
+            title: title || "Untitled",
+            content: serializeDocumentContent(body, storyBible),
+          })
+          .eq("id", activeId)
+          .select("*")
+          .single();
+        if (error) {
+          setActionError(error.message);
+          setSaveState("saved");
+          return;
+        }
+        if (data) {
+          setDocuments((current) =>
+            current.map((doc) => (doc.id === data.id ? data : doc)),
+          );
+        }
+        setSaveState("saved");
+      })();
     }, 700);
 
     return () => window.clearTimeout(timer);
@@ -287,10 +256,10 @@ function PrototypeAppProvider({ children }: { children: React.ReactNode }) {
     (id: string) => {
       const doc = documents.find((item) => item.id === id);
       if (!doc) return;
-      const parsed = parseDocumentContent(doc.content);
       skipSave.current = true;
       setActiveId(doc.id);
       setTitle(doc.title);
+      const parsed = parseDocumentContent(doc.content);
       setBody(parsed.body);
       setAiDrafts(parsed.aiDrafts);
       setStoryBible(parsed.storyBible);
@@ -302,60 +271,83 @@ function PrototypeAppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const createDocument = useCallback(async () => {
-    const next = prototypeDocument();
+    if (!userId) return;
+    const supabase = supabaseRef.current;
+    if (!supabase) return;
+    setActionError(null);
+    const { data, error } = await supabase
+      .from("documents")
+      .insert({ user_id: userId, title: "Untitled", content: "" })
+      .select("*")
+      .single();
+    if (error || !data) {
+      setActionError(error?.message || "Could not create project");
+      return;
+    }
     skipSave.current = true;
-    setDocuments((current) => [next, ...current]);
-    setActiveId(next.id);
-    setTitle(next.title);
+    setDocuments((current) => [data, ...current]);
+    setActiveId(data.id);
+    setTitle(data.title);
     setBody("");
     setAiDrafts([]);
     setStoryBible({ ...EMPTY_STORY_BIBLE });
     setQuotedPassage(null);
     setAiExpanded(true);
     router.push("/editor");
-  }, [router]);
+  }, [router, userId]);
 
-  const deleteDocument = useCallback(async (id: string) => {
-    const remaining = documents.filter((doc) => doc.id !== id);
-    skipSave.current = true;
-    if (remaining.length === 0) {
-      const next = prototypeDocument();
-      setDocuments([next]);
-      setActiveId(next.id);
-      setTitle(next.title);
-      setBody("");
-      setAiDrafts([]);
-      setStoryBible({ ...EMPTY_STORY_BIBLE });
-      setQuotedPassage(null);
-      setAiExpanded(true);
-      router.push("/editor");
-      return;
-    }
-    setDocuments(remaining);
-    if (activeId === id) {
-      const next = remaining[0];
-      const parsed = parseDocumentContent(next.content);
-      setActiveId(next.id);
-      setTitle(next.title);
-      setBody(parsed.body);
-      setAiDrafts(parsed.aiDrafts);
-      setStoryBible(parsed.storyBible);
-      setQuotedPassage(null);
-      setAiExpanded(parsed.aiDrafts.length > 0);
-      router.push("/editor");
-    }
-  }, [activeId, documents, router]);
+  const deleteDocument = useCallback(
+    async (id: string) => {
+      const supabase = supabaseRef.current;
+      if (!supabase) return;
+      const { error } = await supabase.from("documents").delete().eq("id", id);
+      if (error) {
+        setActionError(error.message);
+        return;
+      }
+      const remaining = documents.filter((doc) => doc.id !== id);
+      skipSave.current = true;
+      if (remaining.length === 0) {
+        setDocuments([]);
+        await createDocument();
+        return;
+      }
+      setDocuments(remaining);
+      if (activeId === id) {
+        const next = remaining[0];
+        const parsed = parseDocumentContent(next.content);
+        setActiveId(next.id);
+        setTitle(next.title);
+        setBody(parsed.body);
+        setAiDrafts(parsed.aiDrafts);
+        setStoryBible(parsed.storyBible);
+        setAiExpanded(parsed.aiDrafts.length > 0);
+        router.push("/editor");
+      }
+    },
+    [activeId, createDocument, documents, router],
+  );
 
-  const renameDocument = useCallback(async (id: string, nextTitle: string) => {
-    const titleValue = nextTitle.trim() || "Untitled";
-    const now = new Date().toISOString();
-    setDocuments((current) =>
-      current.map((doc) =>
-        doc.id === id ? { ...doc, title: titleValue, updated_at: now } : doc,
-      ),
-    );
-    if (activeId === id) setTitle(titleValue);
-  }, [activeId]);
+  const renameDocument = useCallback(
+    async (id: string, nextTitle: string) => {
+      const supabase = supabaseRef.current;
+      if (!supabase) return;
+      const titleValue = nextTitle.trim() || "Untitled";
+      const { data, error } = await supabase
+        .from("documents")
+        .update({ title: titleValue })
+        .eq("id", id)
+        .select("*")
+        .single();
+      if (error || !data) {
+        setActionError(error?.message || "Could not rename project");
+        return;
+      }
+      setDocuments((current) => current.map((doc) => (doc.id === data.id ? data : doc)));
+      if (activeId === id) setTitle(data.title);
+    },
+    [activeId],
+  );
 
   useEffect(() => {
     if (!ready || streaming) return;
@@ -363,23 +355,34 @@ function PrototypeAppProvider({ children }: { children: React.ReactNode }) {
     return () => window.clearTimeout(timer);
   }, [body, history, ready, streaming]);
 
-  const saveNow = useCallback(() => {
+  const persistDocument = useCallback(async () => {
     if (!activeId) return;
-    const now = new Date().toISOString();
-    setDocuments((current) =>
-      current.map((doc) =>
-        doc.id === activeId
-          ? {
-              ...doc,
-              title: title || "Untitled",
-              content: serializeDocumentContent(body, storyBible),
-              updated_at: now,
-            }
-          : doc,
-      ),
-    );
+    const supabase = supabaseRef.current;
+    if (!supabase) return;
+    const { data, error } = await supabase
+      .from("documents")
+      .update({
+        title: title || "Untitled",
+        content: serializeDocumentContent(body, storyBible),
+      })
+      .eq("id", activeId)
+      .select("*")
+      .single();
+    if (error) {
+      setActionError(error.message);
+      return;
+    }
+    if (data) {
+      setDocuments((current) => current.map((doc) => (doc.id === data.id ? data : doc)));
+    }
     setSaveState("saved");
   }, [activeId, body, storyBible, title]);
+
+  const saveNow = useCallback(() => {
+    if (!activeId) return;
+    setSaveState("saving");
+    void persistDocument();
+  }, [activeId, persistDocument]);
 
   const captureRestorePoint = useCallback(
     (label = "Restore point") => {
@@ -500,14 +503,14 @@ function PrototypeAppProvider({ children }: { children: React.ReactNode }) {
         throw new Error(data.error || "Generation failed");
       }
 
-      setCredits((current) => {
-        const used = current.used + 1;
-        return {
-          ...current,
-          used,
-          remaining: Math.max(current.limit - used, 0),
-        };
-      });
+      const used = Number(response.headers.get("X-Credits-Used") ?? credits.used + 1);
+      const limit = Number(response.headers.get("X-Credits-Limit") ?? credits.limit);
+      setCredits((current) => ({
+        ...current,
+        used,
+        limit,
+        remaining: Math.max(limit - used, 0),
+      }));
 
       const draftId = crypto.randomUUID();
       const baseBody = body;
@@ -570,24 +573,51 @@ function PrototypeAppProvider({ children }: { children: React.ReactNode }) {
       streamingRef.current = false;
       setStreaming(false);
     }
-  }, [activeId, aiDrafts, body, creativity, prompt, quotedPassage, saveNow, storyBible, title, writingStyles]);
+  }, [activeId, body, creativity, prompt, quotedPassage, saveNow, storyBible, title, writingStyles]);
 
   const upgrade = useCallback(async (plan: "pro" | "pro_plus") => {
-    const limit = PLAN_LIMITS[plan];
-    setCredits({ used: 0, limit, remaining: limit, plan });
-    setProfile((current) =>
-      current ? { ...current, plan_tier: plan } : current,
-    );
+    const response = await fetch("/api/upgrade", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plan }),
+    });
+    if (!response.ok) {
+      const data = (await response.json().catch(() => ({}))) as { error?: string };
+      setActionError(data.error || "Upgrade failed");
+      return;
+    }
+    const data = (await response.json()) as {
+      credits?: Credits;
+    };
+    if (data.credits) {
+      setCredits(data.credits);
+      setProfile((current) =>
+        current ? { ...current, plan_tier: data.credits!.plan } : current,
+      );
+    }
     setShowPricing(false);
   }, []);
 
   const updateProfile = useCallback(async (input: { full_name: string }) => {
-    setProfile((current) =>
-      current
-        ? { ...current, full_name: input.full_name, updated_at: new Date().toISOString() }
-        : current,
-    );
-  }, []);
+    if (!userId) return;
+    const supabase = supabaseRef.current;
+    if (!supabase) return;
+    const { data, error } = await supabase
+      .from("profiles")
+      .update({ full_name: input.full_name })
+      .eq("id", userId)
+      .select("*")
+      .single();
+    if (error) {
+      setActionError(error.message);
+      return;
+    }
+    if (data) setProfile(data);
+  }, [userId]);
+
+  const signOut = useCallback(async () => {
+    await clerkSignOut({ redirectUrl: "/login" });
+  }, [clerkSignOut]);
 
   const setAiDraftContent = useCallback((id: string, content: string) => {
     setAiDrafts((current) =>
@@ -663,8 +693,6 @@ function PrototypeAppProvider({ children }: { children: React.ReactNode }) {
   const showPaywall =
     credits.used >= credits.limit && credits.plan === "free" && !streaming;
 
-  const signOut = useCallback(async () => {}, []);
-
   const value = useMemo<AppState>(
     () => ({
       ready,
@@ -723,7 +751,7 @@ function PrototypeAppProvider({ children }: { children: React.ReactNode }) {
       renameDocument,
       updateProfile,
       signOut,
-      versions: allVersions.filter((item) => item.documentId === activeId),
+      versions: allVersions.filter((point) => point.documentId === activeId),
       captureRestorePoint,
       restoreVersion,
       saveNow,
@@ -737,24 +765,18 @@ function PrototypeAppProvider({ children }: { children: React.ReactNode }) {
     [
       actionError,
       activeDocument,
-      activeId,
       aiDrafts,
       aiExpanded,
       acceptAiDraft,
-      allVersions,
       body,
-      captureRestorePoint,
-      commandOpen,
       createDocument,
       clearScrollTarget,
       credits,
       deleteDocument,
       renameDocument,
       documents,
-      exportOpen,
       generate,
       hasAiDrafts,
-      historyOpen,
       jumpToBeat,
       profile,
       prompt,
@@ -764,11 +786,9 @@ function PrototypeAppProvider({ children }: { children: React.ReactNode }) {
       pendingEdit,
       acceptPendingEdit,
       rejectPendingEdit,
-      restoreVersion,
       undo,
       redo,
       rejectAiDraft,
-      saveNow,
       saveState,
       scrollTarget,
       selectDocument,
@@ -782,25 +802,20 @@ function PrototypeAppProvider({ children }: { children: React.ReactNode }) {
       toggleAiExpanded,
       updateProfile,
       upgrade,
-      storyBible,
+      allVersions,
+      captureRestorePoint,
+      restoreVersion,
+      saveNow,
+      commandOpen,
+      historyOpen,
+      exportOpen,
       aiReply,
       aiReplyVisible,
       aiReplyMinimized,
       dismissAiReply,
+      storyBible,
     ],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
-}
-
-export function AppProvider({ children }: { children: React.ReactNode }) {
-  return <PrototypeAppProvider>{children}</PrototypeAppProvider>;
-}
-
-export function useAppState() {
-  const context = useContext(AppContext);
-  if (!context) {
-    throw new Error("useAppState must be used within AppProvider");
-  }
-  return context;
 }

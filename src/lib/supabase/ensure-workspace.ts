@@ -1,26 +1,18 @@
-import type { User } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, DocumentRow, Profile, UserCredits } from "@/lib/supabase/database.types";
 
 type Client = SupabaseClient<Database>;
 
-function displayName(user: User) {
-  const metadata = (user.user_metadata ?? {}) as Record<string, unknown>;
-  const fullName = typeof metadata.full_name === "string" ? metadata.full_name : "";
-  const name = typeof metadata.name === "string" ? metadata.name : "";
-  return fullName || name || user.email?.split("@")[0] || "Writer";
-}
+export type AppIdentity = {
+  id: string;
+  email?: string | null;
+  full_name?: string | null;
+  avatar_url?: string | null;
+};
 
-function avatarUrl(user: User) {
-  const metadata = (user.user_metadata ?? {}) as Record<string, unknown>;
-  if (typeof metadata.avatar_url === "string") return metadata.avatar_url;
-  if (typeof metadata.picture === "string") return metadata.picture;
-  return null;
-}
-
-export async function ensureWorkspace(supabase: Client, user: User) {
-  const name = displayName(user);
-  const avatar = avatarUrl(user);
+export async function ensureWorkspace(supabase: Client, user: AppIdentity) {
+  const name = user.full_name || user.email?.split("@")[0] || "Writer";
+  const avatar = user.avatar_url ?? null;
 
   const { data: existingProfile, error: profileError } = await supabase
     .from("profiles")
@@ -29,9 +21,10 @@ export async function ensureWorkspace(supabase: Client, user: User) {
     .maybeSingle();
 
   if (profileError) {
-    return { error: profileError.message, profile: null, credits: null, documents: [] as DocumentRow[] };
+    return { error: profileError.message, profile: null, credits: null, documents: [] as DocumentRow[], created: false };
   }
 
+  let created = false;
   let profile: Profile | null = existingProfile;
   if (!profile) {
     const inserted = await supabase
@@ -46,9 +39,10 @@ export async function ensureWorkspace(supabase: Client, user: User) {
       .select("*")
       .single();
     if (inserted.error) {
-      return { error: inserted.error.message, profile: null, credits: null, documents: [] as DocumentRow[] };
+      return { error: inserted.error.message, profile: null, credits: null, documents: [] as DocumentRow[], created: false };
     }
     profile = inserted.data;
+    created = true;
   } else {
     const patch: Database["public"]["Tables"]["profiles"]["Update"] = {};
     if (!profile.full_name) patch.full_name = name;
@@ -72,7 +66,7 @@ export async function ensureWorkspace(supabase: Client, user: User) {
     .maybeSingle();
 
   if (creditsReadError) {
-    return { error: creditsReadError.message, profile, credits: null, documents: [] as DocumentRow[] };
+    return { error: creditsReadError.message, profile, credits: null, documents: [] as DocumentRow[], created };
   }
 
   let credits: UserCredits | null = existingCredits;
@@ -83,7 +77,7 @@ export async function ensureWorkspace(supabase: Client, user: User) {
       .select("*")
       .single();
     if (inserted.error) {
-      return { error: inserted.error.message, profile, credits: null, documents: [] as DocumentRow[] };
+      return { error: inserted.error.message, profile, credits: null, documents: [] as DocumentRow[], created };
     }
     credits = inserted.data;
   }
@@ -95,21 +89,21 @@ export async function ensureWorkspace(supabase: Client, user: User) {
     .order("updated_at", { ascending: false });
 
   if (docsError) {
-    return { error: docsError.message, profile, credits, documents: [] as DocumentRow[] };
+    return { error: docsError.message, profile, credits, documents: [] as DocumentRow[], created };
   }
 
   let documents = docs ?? [];
   if (documents.length === 0) {
-    const created = await supabase
+    const createdDoc = await supabase
       .from("documents")
       .insert({ user_id: user.id, title: "Untitled", content: "" })
       .select("*")
       .single();
-    if (created.error) {
-      return { error: created.error.message, profile, credits, documents };
+    if (createdDoc.error) {
+      return { error: createdDoc.error.message, profile, credits, documents, created };
     }
-    if (created.data) documents = [created.data];
+    if (createdDoc.data) documents = [createdDoc.data];
   }
 
-  return { error: null, profile, credits, documents };
+  return { error: null, profile, credits, documents, created };
 }

@@ -3,7 +3,10 @@
 import { ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useAppState } from "@/context/AppProvider";
-import { initialsFromName, planLabel } from "@/lib/plans";
+import { EDITOR_FONTS, EDITOR_FONT_SIZES, useWritingPrefs } from "@/context/WritingPrefs";
+import { useTheme } from "@/context/ThemeProvider";
+import { initialsFromName, planLabel, formatCreditCount, PLAN_COPY } from "@/lib/plans";
+import { GenreChips } from "@/components/GenreChips";
 
 function Card({
   title,
@@ -16,11 +19,11 @@ function Card({
 }) {
   return (
     <section
-      className={`rounded-xl border bg-white p-6 ${
-        danger ? "border-black" : "border-neutral-200"
+      className={`rounded-xl border bg-surface p-6 ${
+        danger ? "border-black dark:border-white" : "border-border"
       }`}
     >
-      <h2 className="mb-4 text-base font-semibold text-slate-900">{title}</h2>
+      <h2 className="mb-4 text-base font-semibold text-foreground">{title}</h2>
       {children}
     </section>
   );
@@ -39,7 +42,7 @@ function Toggle({
       aria-pressed={checked}
       onClick={() => onChange(!checked)}
       className={`relative h-5 w-10 rounded-full transition ${
-        checked ? "bg-black" : "bg-slate-200"
+        checked ? "bg-black dark:bg-white" : "bg-slate-200 dark:bg-slate-600"
       }`}
     >
       <span
@@ -65,7 +68,7 @@ function Row({
   return (
     <div className="flex items-center justify-between py-3">
       <div className="pr-6">
-        <p className="text-sm font-medium text-slate-900">{title}</p>
+        <p className="text-sm font-medium text-foreground">{title}</p>
         <p className="text-xs text-slate-500">{description}</p>
       </div>
       <Toggle checked={checked} onChange={onChange} />
@@ -75,15 +78,31 @@ function Row({
 
 export function SettingsPage() {
   const { credits, openPricing, profile, updateProfile, signOut } = useAppState();
+  const {
+    aiSuggestions,
+    setAiSuggestions,
+    showTitle,
+    setShowTitle,
+    editorFont,
+    setEditorFont,
+    editorFontSize,
+    setEditorFontSize,
+    showWordCount,
+    setShowWordCount,
+    autoSave,
+    setAutoSave,
+    focusMode,
+    setFocusMode,
+    writingStyles,
+    toggleWritingStyle,
+    creativity,
+    setCreativity,
+  } = useWritingPrefs();
+  const { theme, toggleTheme } = useTheme();
   const [fullName, setFullName] = useState(profile?.full_name ?? "");
   const [saving, setSaving] = useState(false);
-  const [autoSave, setAutoSave] = useState(true);
-  const [wordCount, setWordCount] = useState(true);
-  const [focusMode, setFocusMode] = useState(false);
-  const [aiSuggestions, setAiSuggestions] = useState(true);
   const [emailNotes, setEmailNotes] = useState(false);
   const [creditAlerts, setCreditAlerts] = useState(true);
-  const [creativity, setCreativity] = useState<"Low" | "Medium" | "High">("High");
   const usedPct = credits.limit
     ? Math.round((credits.used / credits.limit) * 100)
     : 0;
@@ -93,9 +112,9 @@ export function SettingsPage() {
   }, [profile?.full_name]);
 
   return (
-    <div className="h-screen overflow-y-auto bg-[#fafafa]">
+    <div className="h-full overflow-y-auto bg-background">
       <div className="mx-auto w-full max-w-3xl px-8 py-12">
-        <h1 className="text-[40px] font-bold text-slate-900">Settings</h1>
+        <h1 className="text-[40px] font-bold text-foreground">Settings</h1>
         <p className="mt-2 text-sm text-slate-500">
           Manage your personal settings, preferences, and AI features.
         </p>
@@ -164,27 +183,21 @@ export function SettingsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold text-slate-900">
-                  {credits.plan === "free"
-                    ? "Letmotif Free Tier"
-                    : credits.plan === "pro"
-                      ? "Leitmotif Pro"
-                      : "Leitmotif Pro Plus"}
+                  Leitmotif {planLabel(credits.plan)}
                 </p>
                 <p className="text-xs text-slate-500">
-                  {credits.plan === "free"
-                    ? "You're currently using the limited trial plan."
-                    : "You're on a paid plan with fast AI credits."}
+                  {PLAN_COPY[credits.plan].description}
                 </p>
               </div>
               <span className="rounded-xl bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">
-                {planLabel(credits.plan)}
+                {PLAN_COPY[credits.plan].badge}
               </span>
             </div>
             <div className="mt-5">
               <div className="mb-2 flex items-center justify-between text-[13px]">
                 <span className="font-medium text-slate-700">Monthly AI Credits</span>
                 <span className="font-semibold text-slate-900">
-                  {credits.used} / {credits.limit} Used ({usedPct}%)
+                  {formatCreditCount(credits.used)} / {formatCreditCount(credits.limit)} Used ({usedPct}%)
                 </span>
               </div>
               <div className="h-2 overflow-hidden rounded bg-slate-100">
@@ -197,10 +210,19 @@ export function SettingsPage() {
             <button
               type="button"
               onClick={openPricing}
-              className="mt-5 w-[180px] rounded-lg bg-black px-4 py-2.5 text-sm font-semibold text-white"
+              className="sleek-cta mt-5 w-[180px] rounded-lg px-4 py-2.5 text-sm font-semibold ink-text"
             >
               Upgrade Plan
             </button>
+          </Card>
+
+          <Card title="Appearance">
+            <Row
+              title="Dark mode"
+              description="Use a dim canvas for late-night writing sessions."
+              checked={theme === "dark"}
+              onChange={() => toggleTheme()}
+            />
           </Card>
 
           <Card title="Writing Preferences">
@@ -213,14 +235,68 @@ export function SettingsPage() {
             <div className="h-px bg-neutral-200" />
             <Row
               title="Show word count"
-              description="Display live word count and stats bar inside the editor view."
-              checked={wordCount}
-              onChange={setWordCount}
+              description="Display live word count and reading time beside the credit meter."
+              checked={showWordCount}
+              onChange={setShowWordCount}
             />
             <div className="h-px bg-neutral-200" />
             <Row
+              title="Show document title"
+              description="Show the large title field at the top of the editor. The project name still appears in the header."
+              checked={showTitle}
+              onChange={setShowTitle}
+            />
+            <div className="h-px bg-neutral-200" />
+            <div className="py-3">
+              <p className="text-sm font-medium text-foreground">Editor font</p>
+              <p className="text-xs text-slate-500">
+                Choose the typeface used for the title and story text.
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {(Object.keys(EDITOR_FONTS) as Array<keyof typeof EDITOR_FONTS>).map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setEditorFont(key)}
+                    className={`rounded-lg border px-3 py-2 text-[13px] ${
+                      editorFont === key
+                        ? "border-foreground bg-surface font-semibold text-foreground shadow-sm"
+                        : "border-neutral-200 font-medium text-slate-500"
+                    }`}
+                    style={{ fontFamily: EDITOR_FONTS[key].family }}
+                  >
+                    {EDITOR_FONTS[key].label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="h-px bg-neutral-200" />
+            <div className="py-3">
+              <p className="text-sm font-medium text-foreground">Editor size</p>
+              <p className="text-xs text-slate-500">
+                Set the story text size. You can also use the A controls in the editor header.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {EDITOR_FONT_SIZES.map((size) => (
+                  <button
+                    key={size}
+                    type="button"
+                    onClick={() => setEditorFontSize(size)}
+                    className={`rounded-lg border px-3 py-2 text-[13px] ${
+                      editorFontSize === size
+                        ? "border-foreground bg-surface font-semibold text-foreground shadow-sm"
+                        : "border-neutral-200 font-medium text-slate-500"
+                    }`}
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="h-px bg-neutral-200" />
+            <Row
               title="Focus mode"
-              description="Fade out inactive paragraphs to stay intensely focused on the current line."
+              description="Hide the sidebar and prompt bar so only the editor canvas remains. ⇧⌘F"
               checked={focusMode}
               onChange={setFocusMode}
             />
@@ -243,6 +319,14 @@ export function SettingsPage() {
               onChange={setAiSuggestions}
             />
             <div className="mb-4 h-px bg-neutral-200" />
+            <p className="text-[13px] font-medium text-slate-700">Writing style</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Select one or more genres. Claude blends them on generate, rewrite, and complete.
+            </p>
+            <div className="mt-3 min-w-0">
+              <GenreChips selected={writingStyles} onToggle={toggleWritingStyle} />
+            </div>
+            <div className="my-4 h-px bg-neutral-200" />
             <p className="text-[13px] font-medium text-slate-700">Response Creativity</p>
             <div className="mt-2 flex rounded-lg bg-slate-100 p-0.5">
               {(["Low", "Medium", "High"] as const).map((option) => (
@@ -259,6 +343,17 @@ export function SettingsPage() {
                   {option}
                 </button>
               ))}
+            </div>
+          </Card>
+
+          <Card title="Keyboard Shortcuts">
+            <div className="flex flex-col gap-2 text-[13px] text-slate-600">
+              <p><span className="font-medium text-foreground">⌘K</span> Command palette</p>
+              <p><span className="font-medium text-foreground">⌘S</span> Save</p>
+              <p><span className="font-medium text-foreground">⇧⌘E</span> Export</p>
+              <p><span className="font-medium text-foreground">⇧⌘F</span> Focus mode</p>
+              <p><span className="font-medium text-foreground">⌘N</span> New project</p>
+              <p><span className="font-medium text-foreground">⌘Z / ⇧⌘Z</span> Undo / Redo</p>
             </div>
           </Card>
 
