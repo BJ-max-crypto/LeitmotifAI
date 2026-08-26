@@ -20,6 +20,7 @@ import {
 import type { AiAttachment } from "@/lib/files";
 import { htmlToPlain, applyWriteStream, applyEditStream, unwrapAiEdit } from "@/lib/editor-html";
 import { EMPTY_STORY_BIBLE, formatStoryBible, type StoryBible } from "@/lib/story-bible";
+import { toApiConversation, type AiChatMessage } from "@/lib/ai-chat";
 import { parseAiPrompt } from "@/lib/prompt-mode";
 import { useWritingPrefs } from "@/context/WritingPrefs";
 import {
@@ -68,7 +69,7 @@ export type AppState = {
   setQuotedPassage: (passage: QuotedPassage | null) => void;
   storyBible: StoryBible;
   setStoryBible: (value: StoryBible) => void;
-  aiReply: string;
+  aiMessages: AiChatMessage[];
   aiReplyVisible: boolean;
   aiReplyMinimized: boolean;
   setAiReplyMinimized: (value: boolean) => void;
@@ -212,7 +213,7 @@ function PrototypeAppProvider({ children }: { children: React.ReactNode }) {
   const [aiExpanded, setAiExpanded] = useState(false);
   const [quotedPassage, setQuotedPassage] = useState<QuotedPassage | null>(null);
   const [storyBible, setStoryBible] = useState<StoryBible>({ ...EMPTY_STORY_BIBLE });
-  const [aiReply, setAiReply] = useState("");
+  const [aiMessages, setAiMessages] = useState<AiChatMessage[]>([]);
   const [aiReplyVisible, setAiReplyVisible] = useState(false);
   const [aiReplyMinimized, setAiReplyMinimized] = useState(false);
   const [pendingEdit, setPendingEdit] = useState<{ id: string; originalBody: string } | null>(
@@ -442,6 +443,8 @@ function PrototypeAppProvider({ children }: { children: React.ReactNode }) {
     setAiExpanded(false);
     setActionError(null);
 
+    let assistantId = "";
+    let conversation: { role: "user" | "assistant"; content: string }[] = [];
     if (isDocumentEdit) {
       history.remember(body);
       setAiReplyVisible(false);
@@ -458,7 +461,13 @@ function PrototypeAppProvider({ children }: { children: React.ReactNode }) {
         });
       }
     } else {
-      setAiReply("");
+      conversation = toApiConversation(aiMessages);
+      assistantId = crypto.randomUUID();
+      setAiMessages((current) => [
+        ...current,
+        { id: crypto.randomUUID(), role: "user", content: requestPrompt },
+        { id: assistantId, role: "assistant", content: "" },
+      ]);
       setAiReplyVisible(true);
       setAiReplyMinimized(false);
     }
@@ -480,6 +489,7 @@ function PrototypeAppProvider({ children }: { children: React.ReactNode }) {
           style: writingStyles,
           creativity,
           bible: formatStoryBible(storyBible),
+          conversation,
         }),
       });
 
@@ -492,6 +502,9 @@ function PrototypeAppProvider({ children }: { children: React.ReactNode }) {
           remaining: 0,
         }));
         setAiReplyVisible(false);
+        if (!isDocumentEdit) {
+          setAiMessages((current) => current.slice(0, -2));
+        }
         return;
       }
 
@@ -520,7 +533,11 @@ function PrototypeAppProvider({ children }: { children: React.ReactNode }) {
 
       const paint = (generated: string) => {
         if (!isDocumentEdit) {
-          setAiReply(generated);
+          setAiMessages((current) =>
+            current.map((message) =>
+              message.id === assistantId ? { ...message, content: generated } : message,
+            ),
+          );
           return;
         }
         skipSave.current = true;
@@ -570,7 +587,7 @@ function PrototypeAppProvider({ children }: { children: React.ReactNode }) {
       streamingRef.current = false;
       setStreaming(false);
     }
-  }, [activeId, aiDrafts, body, creativity, prompt, quotedPassage, saveNow, storyBible, title, writingStyles]);
+  }, [activeId, aiDrafts, aiMessages, body, creativity, prompt, quotedPassage, saveNow, storyBible, title, writingStyles]);
 
   const upgrade = useCallback(async (plan: "pro" | "pro_plus") => {
     const limit = PLAN_LIMITS[plan];
@@ -631,7 +648,7 @@ function PrototypeAppProvider({ children }: { children: React.ReactNode }) {
   const dismissAiReply = useCallback(() => {
     setAiReplyVisible(false);
     setAiReplyMinimized(false);
-    setAiReply("");
+    setAiMessages([]);
   }, []);
 
   const undo = useCallback(() => {
@@ -692,7 +709,7 @@ function PrototypeAppProvider({ children }: { children: React.ReactNode }) {
       setQuotedPassage,
       storyBible,
       setStoryBible,
-      aiReply,
+      aiMessages,
       aiReplyVisible,
       aiReplyMinimized,
       setAiReplyMinimized,
@@ -783,7 +800,7 @@ function PrototypeAppProvider({ children }: { children: React.ReactNode }) {
       updateProfile,
       upgrade,
       storyBible,
-      aiReply,
+      aiMessages,
       aiReplyVisible,
       aiReplyMinimized,
       dismissAiReply,

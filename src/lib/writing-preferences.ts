@@ -4,6 +4,7 @@ export const GOALS = [
   "Personal Blog",
   "Marketing Copy",
   "Academic / Essay",
+  "Other",
 ] as const;
 
 export const GENRES = [
@@ -15,6 +16,7 @@ export const GENRES = [
   "Screenplay",
   "Historical Fiction",
   "Non-Fiction & Memoir",
+  "Other",
 ] as const;
 
 export const PERSPECTIVES = [
@@ -22,6 +24,7 @@ export const PERSPECTIVES = [
   "Third Person Limited",
   "Third Person Omniscient",
   'Second Person — "You"',
+  "Other",
 ] as const;
 
 export const TONES = [
@@ -30,12 +33,14 @@ export const TONES = [
   "Fast-Paced & Action-Packed",
   "Poetic & Descriptive",
   "Professional & Formal",
+  "Other",
 ] as const;
 
 export const AI_EXPERIENCE = [
   "Brand new",
   "Moderate experience",
   "Power user",
+  "Other",
 ] as const;
 
 export const PRIMARY_TASKS = [
@@ -43,22 +48,24 @@ export const PRIMARY_TASKS = [
   "Brainstorming plot ideas",
   "Rewriting text",
   "Expanding scenes",
+  "Other",
 ] as const;
 
 export const GUIDANCE_MODES = [
   "Stick strictly to prompt",
   "Offer creative variations",
+  "Other",
 ] as const;
 
 export type WritingPreferences = {
   fullName: string;
-  goal: (typeof GOALS)[number] | "";
-  genre: (typeof GENRES)[number] | "";
-  perspective: (typeof PERSPECTIVES)[number] | "";
-  tone: (typeof TONES)[number] | "";
-  aiExperience: (typeof AI_EXPERIENCE)[number] | "";
-  primaryTask: (typeof PRIMARY_TASKS)[number] | "";
-  guidanceMode: (typeof GUIDANCE_MODES)[number] | "";
+  goal: string;
+  genre: string;
+  perspective: string;
+  tone: string;
+  aiExperience: string;
+  primaryTask: string;
+  guidanceMode: string;
   completedAt?: string;
 };
 
@@ -88,7 +95,11 @@ export function formatQuestionnairePrompt(prefs: WritingPreferences | null | und
   const guidance =
     prefs.guidanceMode === "Stick strictly to prompt"
       ? "Stay tightly aligned with the writer's request. Do not invent extra plot unless asked."
-      : "You may offer elegant creative variations while remaining true to the established voice.";
+      : prefs.guidanceMode === "Offer creative variations"
+        ? "You may offer elegant creative variations while remaining true to the established voice."
+        : prefs.guidanceMode
+          ? `Collaboration preference: ${prefs.guidanceMode}`
+          : "";
   return [
     "Writer profile from onboarding:",
     prefs.fullName ? `Name: ${prefs.fullName}` : "",

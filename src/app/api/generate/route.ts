@@ -97,6 +97,7 @@ export async function POST(request: Request) {
     style?: string | string[];
     creativity?: string;
     bible?: string;
+    conversation?: { role: "user" | "assistant"; content?: string }[];
   };
 
   const attachments = (body.attachments ?? []).slice(0, 4);
@@ -169,7 +170,7 @@ export async function POST(request: Request) {
 
     const system = [
       askMode
-        ? "You are Leitmotif, an AI writing partner. Answer the writer directly. Discuss the story, give notes, outline, brainstorm, or explain. Do not rewrite or append the manuscript. Clear, useful prose. Light markdown is fine."
+        ? "You are Leitmotif, an AI writing partner in an ongoing conversation. Use prior turns, the story bible, and the current manuscript as context. Answer the writer directly. Discuss the story, give notes, outline, brainstorm, or explain. Do not rewrite or append the manuscript unless they use an edit request. Clear, useful prose. Light markdown is fine."
         : isEdit
         ? "You are Leitmotif, an AI writing partner. The writer highlighted one passage in their story. Return only the rewritten version of that highlighted passage so it can replace that one span. Keep a similar length unless asked otherwise. Do not use markdown, asterisks, underscores, or hash headings. Do not return the rest of the story. If files are attached, use them as source material."
         : "You are Leitmotif, an AI writing partner. Write or continue the story. Return only the new prose. Do not use markdown, asterisks, underscores, or hash headings. Do not wrap the answer in labels or commentary. If files or images are attached, use them as source material for the prose.",
@@ -245,13 +246,30 @@ export async function POST(request: Request) {
 
     content.push({ type: "text", text: textParts.join("\n\n") });
 
+    const conversation = (body.conversation ?? [])
+      .filter(
+        (turn) =>
+          (turn.role === "user" || turn.role === "assistant") &&
+          typeof turn.content === "string" &&
+          turn.content.trim().length > 0,
+      )
+      .slice(-18)
+      .map((turn) => ({
+        role: turn.role as "user" | "assistant",
+        content: turn.content!.trim(),
+      }));
+
     const stream = anthropic.messages.stream({
       model: MODEL,
       max_tokens: isEdit ? 1200 : askMode ? 2500 : isProPlus ? 8000 : 4000,
       system,
       messages: [
+        ...conversation.map((turn) => ({
+          role: turn.role,
+          content: turn.content,
+        })),
         {
-          role: "user",
+          role: "user" as const,
           content,
         },
       ],

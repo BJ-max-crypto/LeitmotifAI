@@ -26,8 +26,14 @@ export function OnboardingFlow() {
 
   const current = ONBOARDING_STEPS[step];
   const progress = ((step + 1) / ONBOARDING_STEPS.length) * 100;
-  const value = answers[current.key];
-  const canContinue = typeof value === "string" && value.trim().length > 0;
+  const rawValue = answers[current.key];
+  const value = typeof rawValue === "string" ? rawValue : "";
+  const listed = Boolean(current.options?.includes(value));
+  const otherSelected = Boolean(
+    current.options?.includes("Other") && value && (value === "Other" || !listed),
+  );
+  const canContinue =
+    typeof value === "string" && value.trim().length > 0 && value.trim() !== "Other";
 
   const heading = useMemo(
     () => (step === 0 ? "Let’s set your voice" : "A few more details"),
@@ -125,7 +131,7 @@ export function OnboardingFlow() {
             ) : (
               <div className="mt-6 grid gap-2">
                 {current.options?.map((option) => {
-                  const selected = value === option;
+                  const selected = option === "Other" ? otherSelected : value === option;
                   return (
                     <motion.button
                       key={option}
@@ -133,7 +139,7 @@ export function OnboardingFlow() {
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.99 }}
                       transition={{ duration: 0.2 }}
-                      onClick={() => setValue(option)}
+                      onClick={() => setValue(option === "Other" ? "Other" : option)}
                       className={`rounded-2xl border px-4 py-3 text-left text-sm transition ${
                         selected
                           ? "sleek-cta ink-text font-semibold"
@@ -144,6 +150,18 @@ export function OnboardingFlow() {
                     </motion.button>
                   );
                 })}
+                {otherSelected ? (
+                  <input
+                    autoFocus
+                    value={value === "Other" ? "" : value}
+                    onChange={(event) => setValue(event.target.value.trim() ? event.target.value : "Other")}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") next();
+                    }}
+                    placeholder="Tell us in your own words…"
+                    className="mt-1 w-full rounded-2xl border-[1.5px] border-zinc-400 bg-white/70 px-4 py-3.5 text-base text-zinc-900 outline-none transition focus:ring-1 focus:ring-zinc-500"
+                  />
+                ) : null}
               </div>
             )}
           </motion.div>
