@@ -142,8 +142,19 @@ function WorkspaceFrame({ children }: { children: React.ReactNode }) {
 
   if (!ready) {
     return (
-      <div className="flex min-h-screen flex-1 items-center justify-center bg-background text-sm text-slate-500 dark:text-slate-400">
-        Loading workspace…
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-white"
+        role="status"
+        aria-label="Loading workspace"
+      >
+        <video
+          src="/loading.mp4"
+          autoPlay
+          muted
+          loop
+          playsInline
+          className="max-h-[70vh] max-w-[90vw] object-contain"
+        />
       </div>
     );
   }

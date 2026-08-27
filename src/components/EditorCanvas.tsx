@@ -41,6 +41,7 @@ import {
 import { fileToEditorHtml } from "@/lib/files";
 import { formatStoryBible } from "@/lib/story-bible";
 import { formatWordStats } from "@/lib/writing-stats";
+import { BrandLogo } from "@/components/BrandLogo";
 
 type FormatCommand = "bold" | "italic" | "underline" | "strikeThrough";
 
@@ -341,8 +342,8 @@ export function EditorCanvas() {
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-white dark:bg-zinc-950">
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-zinc-200 bg-white px-[60px] dark:border-zinc-800 dark:bg-zinc-950">
-        <nav className="flex items-center gap-3 text-[13px] text-slate-500 dark:text-slate-400">
+      <header className="relative grid h-12 shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-zinc-200 bg-white px-4 dark:border-zinc-800 dark:bg-zinc-950 sm:px-6">
+        <nav className="flex min-w-0 items-center gap-3 text-[13px] text-slate-500 dark:text-slate-400">
           <span className="font-medium text-foreground">{title || "Untitled"}</span>
           <div className="flex items-center gap-0.5 font-medium">
             <button
@@ -511,7 +512,8 @@ export function EditorCanvas() {
             </div>
           </div>
         </nav>
-        <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+        <BrandLogo size={36} />
+        <div className="flex items-center justify-end gap-2 text-slate-500 dark:text-slate-400">
           <button
             type="button"
             aria-label="Undo"
