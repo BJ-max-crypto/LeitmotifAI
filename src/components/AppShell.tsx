@@ -7,6 +7,7 @@ import { WritingPrefsProvider, useWritingPrefs } from "@/context/WritingPrefs";
 import { PricingModal } from "@/components/PricingModal";
 import { Sidebar } from "@/components/Sidebar";
 import { CommandPalette } from "@/components/CommandPalette";
+import { LoadingSplash } from "@/components/LoadingSplash";
 
 function ShortcutListener() {
   const {
@@ -141,22 +142,7 @@ function WorkspaceFrame({ children }: { children: React.ReactNode }) {
   const { focusMode } = useWritingPrefs();
 
   if (!ready) {
-    return (
-      <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-white"
-        role="status"
-        aria-label="Loading workspace"
-      >
-        <video
-          src="/loading.mp4"
-          autoPlay
-          muted
-          loop
-          playsInline
-          className="max-h-[70vh] max-w-[90vw] object-contain"
-        />
-      </div>
-    );
+    return <LoadingSplash />;
   }
 
   return (
