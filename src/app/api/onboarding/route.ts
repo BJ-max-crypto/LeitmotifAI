@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { notifySlack } from "@/lib/slack";
 import { getClerkUserId } from "@/lib/supabase/server";
-import { hasCompletedOnboarding } from "@/lib/writing-preferences";
+import { hasCompletedOnboarding, isOldEnough, isWritingPreferences, MINIMUM_AGE, parseAge } from "@/lib/writing-preferences";
 
 export async function POST(request: Request) {
   const userId = await getClerkUserId();
@@ -10,13 +10,25 @@ export async function POST(request: Request) {
   }
 
   const body = (await request.json()) as { preferences?: unknown };
-  if (!hasCompletedOnboarding(body.preferences)) {
-    return NextResponse.json({ error: "Incomplete onboarding" }, { status: 400 });
+  const preferences = body.preferences;
+  if (!hasCompletedOnboarding(preferences)) {
+    const tooYoung =
+      isWritingPreferences(preferences) &&
+      parseAge(preferences.age) !== null &&
+      !isOldEnough(preferences.age);
+    return NextResponse.json(
+      {
+        error: tooYoung
+          ? `You must be ${MINIMUM_AGE} or older to use Leitmotif.`
+          : "Incomplete onboarding",
+      },
+      { status: 400 },
+    );
   }
 
   await notifySlack(
     "signup",
-    `${body.preferences.fullName || "A writer"} finished onboarding · ${body.preferences.genre} · ${body.preferences.goal}`,
+    `${preferences.fullName || "A writer"} finished onboarding · ${preferences.genre} · ${preferences.goal}`,
   );
 
   return NextResponse.json({ ok: true });

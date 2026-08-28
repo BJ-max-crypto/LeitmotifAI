@@ -5,7 +5,8 @@ function isPublicPath(pathname: string) {
     pathname.startsWith("/login") ||
     pathname.startsWith("/sign-up") ||
     pathname === "/api/setup" ||
-    pathname === "/api/supabase-config"
+    pathname === "/api/supabase-config" ||
+    pathname.startsWith("/api/stripe/webhook")
   );
 }
 

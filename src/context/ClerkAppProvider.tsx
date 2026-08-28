@@ -163,6 +163,40 @@ export function ClerkAppProvider({ children }: { children: React.ReactNode }) {
   }, [loadWorkspace]);
 
   useEffect(() => {
+    if (!ready || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const checkout = params.get("checkout");
+    if (checkout !== "success" && checkout !== "canceled") return;
+
+    const url = new URL(window.location.href);
+    url.searchParams.delete("checkout");
+    url.searchParams.delete("plan");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+    setShowPricing(false);
+
+    if (checkout !== "success") return;
+
+    let cancelled = false;
+    const poll = async () => {
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        const response = await fetch("/api/credits");
+        if (!response.ok || cancelled) return;
+        const data = (await response.json()) as Credits;
+        setCredits(data);
+        setProfile((current) =>
+          current ? { ...current, plan_tier: data.plan } : current,
+        );
+        if (data.plan === "pro" || data.plan === "pro_plus") return;
+        await new Promise((resolve) => window.setTimeout(resolve, 800));
+      }
+    };
+    void poll();
+    return () => {
+      cancelled = true;
+    };
+  }, [ready]);
+
+  useEffect(() => {
     if (!ready || !profile) return;
     if (pathname?.startsWith("/onboarding")) return;
     if (!hasCompletedOnboarding(profile.writing_preferences)) {
@@ -604,7 +638,13 @@ export function ClerkAppProvider({ children }: { children: React.ReactNode }) {
     }
     const data = (await response.json()) as {
       credits?: Credits;
+      checkoutUrl?: string | null;
+      error?: string;
     };
+    if (data.checkoutUrl) {
+      window.location.assign(data.checkoutUrl);
+      return;
+    }
     if (data.credits) {
       setCredits(data.credits);
       setProfile((current) =>

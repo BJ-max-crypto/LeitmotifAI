@@ -25,6 +25,12 @@ export const ONBOARDING_STEPS: OnboardingStep[] = [
     input: true,
   },
   {
+    key: "age",
+    title: "How old are you?",
+    subtitle: "You must be 13 or older to use Leitmotif. Enter your age in years.",
+    input: true,
+  },
+  {
     key: "goal",
     title: "What are you here to write?",
     subtitle: "Choose the form that feels closest to your work.",

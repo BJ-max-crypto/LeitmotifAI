@@ -59,6 +59,7 @@ export const GUIDANCE_MODES = [
 
 export type WritingPreferences = {
   fullName: string;
+  age: number;
   goal: string;
   genre: string;
   perspective: string;
@@ -71,6 +72,7 @@ export type WritingPreferences = {
 
 export const EMPTY_WRITING_PREFERENCES: WritingPreferences = {
   fullName: "",
+  age: 0,
   goal: "",
   genre: "",
   perspective: "",
@@ -80,6 +82,24 @@ export const EMPTY_WRITING_PREFERENCES: WritingPreferences = {
   guidanceMode: "",
 };
 
+export const MINIMUM_AGE = 13;
+
+export function parseAge(value: unknown): number | null {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0 && value < 130) {
+    return value;
+  }
+  if (typeof value === "string" && /^\d{1,3}$/.test(value.trim())) {
+    const parsed = Number.parseInt(value.trim(), 10);
+    if (parsed > 0 && parsed < 130) return parsed;
+  }
+  return null;
+}
+
+export function isOldEnough(age: unknown): boolean {
+  const parsed = parseAge(age);
+  return parsed !== null && parsed >= MINIMUM_AGE;
+}
+
 export function isWritingPreferences(value: unknown): value is WritingPreferences {
   if (!value || typeof value !== "object") return false;
   const row = value as Record<string, unknown>;
@@ -87,7 +107,11 @@ export function isWritingPreferences(value: unknown): value is WritingPreference
 }
 
 export function hasCompletedOnboarding(value: unknown): value is WritingPreferences {
-  return isWritingPreferences(value) && Boolean(value.completedAt);
+  return (
+    isWritingPreferences(value) &&
+    Boolean(value.completedAt) &&
+    isOldEnough(value.age)
+  );
 }
 
 export function formatQuestionnairePrompt(prefs: WritingPreferences | null | undefined) {

@@ -9,6 +9,9 @@ import { ONBOARDING_STEPS } from "@/lib/onboarding-steps";
 import { createBrowserSupabase } from "@/lib/supabase/client";
 import {
   EMPTY_WRITING_PREFERENCES,
+  MINIMUM_AGE,
+  isOldEnough,
+  parseAge,
   type WritingPreferences,
 } from "@/lib/writing-preferences";
 
@@ -19,6 +22,7 @@ export function OnboardingFlow() {
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ageBlocked, setAgeBlocked] = useState(false);
   const [answers, setAnswers] = useState<WritingPreferences>({
     ...EMPTY_WRITING_PREFERENCES,
     fullName: user?.fullName ?? "",
@@ -28,12 +32,16 @@ export function OnboardingFlow() {
   const progress = ((step + 1) / ONBOARDING_STEPS.length) * 100;
   const rawValue = answers[current.key];
   const value = typeof rawValue === "string" ? rawValue : "";
+  const ageValue = current.key === "age" ? parseAge(answers.age) : null;
+  const tooYoung = current.key === "age" && ageValue !== null && ageValue < MINIMUM_AGE;
   const listed = Boolean(current.options?.includes(value));
   const otherSelected = Boolean(
     current.options?.includes("Other") && value && (value === "Other" || !listed),
   );
   const canContinue =
-    typeof value === "string" && value.trim().length > 0 && value.trim() !== "Other";
+    current.key === "age"
+      ? parseAge(answers.age) !== null
+      : typeof value === "string" && value.trim().length > 0 && value.trim() !== "Other";
 
   const heading = useMemo(
     () => (step === 0 ? "Let’s set your voice" : "A few more details"),
@@ -46,6 +54,10 @@ export function OnboardingFlow() {
 
   const finish = async () => {
     if (!session) return;
+    if (!isOldEnough(answers.age)) {
+      setError(`You must be ${MINIMUM_AGE} or older to use Leitmotif.`);
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -76,12 +88,42 @@ export function OnboardingFlow() {
 
   const next = () => {
     if (!canContinue) return;
+    if (current.key === "age" && !isOldEnough(answers.age)) {
+      setAgeBlocked(true);
+      return;
+    }
     if (step === ONBOARDING_STEPS.length - 1) {
       void finish();
       return;
     }
     setStep((value) => value + 1);
   };
+
+  if (ageBlocked) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-4 py-10">
+        <div className="w-full max-w-lg rounded-[28px] border-[1.5px] border-zinc-400 bg-white/70 p-8 text-center">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400">
+            Leitmotif
+          </p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight ink-text">
+            You can’t use this platform
+          </h1>
+          <p className="mt-3 text-sm leading-6 text-zinc-500">
+            Leitmotif is only available to people {MINIMUM_AGE} and older. If you entered the
+            wrong age, go back and correct it.
+          </p>
+          <button
+            type="button"
+            onClick={() => setAgeBlocked(false)}
+            className="sleek-cta mt-8 inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold"
+          >
+            <span className="ink-text">Go back</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-4 py-10">
@@ -91,7 +133,7 @@ export function OnboardingFlow() {
         </p>
         <h1 className="mt-3 text-4xl font-semibold tracking-tight ink-text">{heading}</h1>
         <p className="mt-2 text-sm text-zinc-500">
-          Eight short questions so Claude can write in your register.
+          A few short questions so Claude can write in your register. You must be 13 or older.
         </p>
 
         <div className="mt-8 h-1.5 overflow-hidden rounded-full bg-zinc-100">
@@ -120,12 +162,33 @@ export function OnboardingFlow() {
             {current.input ? (
               <input
                 autoFocus
-                value={answers.fullName}
-                onChange={(event) => setValue(event.target.value)}
+                type={current.key === "age" ? "number" : "text"}
+                inputMode={current.key === "age" ? "numeric" : "text"}
+                min={current.key === "age" ? 1 : undefined}
+                max={current.key === "age" ? 129 : undefined}
+                step={current.key === "age" ? 1 : undefined}
+                value={
+                  current.key === "age"
+                    ? answers.age > 0
+                      ? String(answers.age)
+                      : ""
+                    : answers.fullName
+                }
+                onChange={(event) => {
+                  if (current.key === "age") {
+                    const next = parseAge(event.target.value);
+                    setAnswers((currentAnswers) => ({
+                      ...currentAnswers,
+                      age: next ?? 0,
+                    }));
+                    return;
+                  }
+                  setValue(event.target.value);
+                }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") next();
                 }}
-                placeholder="Your name"
+                placeholder={current.key === "age" ? "Your age" : "Your name"}
                 className="mt-6 w-full rounded-2xl border-[1.5px] border-zinc-400 bg-white/70 px-4 py-3.5 text-base text-zinc-900 outline-none transition focus:ring-1 focus:ring-zinc-500"
               />
             ) : (
@@ -167,6 +230,12 @@ export function OnboardingFlow() {
           </motion.div>
         </AnimatePresence>
 
+        {tooYoung && String(answers.age).length >= 2 ? (
+          <p className="mt-4 text-sm font-medium text-red-600">
+            Leitmotif is only available to people {MINIMUM_AGE} and older. You cannot use this
+            platform.
+          </p>
+        ) : null}
         {error ? <p className="mt-4 text-sm text-red-600">{error}</p> : null}
 
         <div className="mt-8 flex items-center justify-between">
