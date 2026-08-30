@@ -53,7 +53,7 @@ export function PromptBar() {
       <div className="pointer-events-auto relative z-20 px-4 pb-5 pt-6 sm:px-6">
         {showPaywall ? <PaywallPopover /> : null}
 
-        <div className="mx-auto flex w-full max-w-[640px] flex-col overflow-hidden rounded-[24px] border-[1.5px] border-zinc-400 bg-white/70 shadow-[0_8px_30px_rgb(0,0,0,0.08)] backdrop-blur-md prompt-glow dark:bg-zinc-950/50">
+        <div className="mx-auto flex w-full max-w-[480px] flex-col overflow-hidden rounded-[24px] border-[1.5px] border-zinc-400 bg-white/70 shadow-[0_8px_30px_rgb(0,0,0,0.08)] backdrop-blur-md prompt-glow dark:bg-zinc-950/50">
           <div className="min-w-0 border-b border-border px-2 py-2">
             <GenreChips
               compact
@@ -179,7 +179,7 @@ export function PromptBar() {
           </form>
         </div>
 
-        <p className="mx-auto mt-2 max-w-[608px] text-center text-[10px] font-semibold leading-normal text-slate-400">
+        <p className="mx-auto mt-2 max-w-[448px] text-center text-[10px] font-semibold leading-normal text-slate-400">
           AI can make mistakes. Verify important information.
         </p>
       </div>

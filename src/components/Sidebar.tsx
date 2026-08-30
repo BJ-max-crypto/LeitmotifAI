@@ -92,7 +92,7 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="sidebar-pattern glass-panel flex h-screen w-[260px] shrink-0 flex-col border-r border-zinc-200/80">
+    <aside className="sidebar-pattern glass-panel flex h-screen w-[212px] shrink-0 flex-col border-r border-zinc-200/80">
       <div className="flex h-[42px] shrink-0 items-center px-4 pt-4 pb-2" />
       <div className="flex flex-col gap-1 px-2">
         <motion.button
